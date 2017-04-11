@@ -1,0 +1,8 @@
+[Unit]
+Description=Printing Over Simple HTTP service
+
+[Service]
+ExecStart=/opt/posh --username foo --password bar
+
+[Install]
+WantedBy=multi-user.target
