@@ -2,7 +2,9 @@ posh: Print Over Simple HTTP
 ============================
 
 posh is a small HTTP daemon that listens for requests and sends the request
-body to the specified printing device.
+body to the specified printing device. The received payload is written directly
+to the specified device file (raw mode) so your printer must be able to print
+the payload data without drivers.
 
 Inspired by the `12 Factor <http://12factor.net>`_ approach of treating backing
 services as attached resources, the printer becomes a URL based resource.
@@ -18,6 +20,8 @@ There are no external libraries so it's a simple case of:
 
 which will produce a statically linked binary.
 
+Alternatively, you can download a precompiled binary in the releases section.
+
 Usage
 -----
 
@@ -27,24 +31,37 @@ Run with the help flag to see a list of options:
 
     $ ./posh --help
 
-At the bare minimum you'll need to specify a username and password for HTTP
-basic authentication:
+posh is secured via HTTP basic authentication so you must configure a username
+and password. By default, this is specified in in :code:`/etc/posh.json` like so:
+
+.. code-block:: json
+
+    {
+      "username": "admin",
+      "password": "secret"
+    }
+
+If the file doesn't exist, or cannot be read, you'll need to specify a username
+and password via the command line flags:
 
 .. code-block:: sh
 
-    $ ./posh --username admin --password password
+    $ ./posh --username admin --password secret
 
-Then send it a HTTP POST request with the device path and print data payload:
+These flags will override values in the configuration file, if it exists.
+
+Then send a HTTP POST request with the printer device path and print data
+payload:
 
 .. code-block:: sh
 
-    $ curl --insecure -X POST https://foo:bar@localhost/dev/usb/lp0 -d @file.ps
+    $ curl --insecure -X POST https://admin:secret@localhost/dev/usb/lp0 -d @file.ps
 
 Note that posh uses TLS so your client must connect using the 'https' scheme.
-Every time posh starts, it generates a self-signed certificate.
+Every time posh starts, it generates a new self-signed certificate.
 
 If you make an authenticated GET request to */stats*, you'll see stats relating
 to the number of print jobs submitted.
 
 An unauthenticated GET request to the root path, */*, is permissible and just
-returns *posh*. Its main use is for health check polling.
+returns version information. Its main use is for health check polling.

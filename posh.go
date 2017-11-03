@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -22,16 +23,26 @@ import (
 )
 
 const AppVersion = "1.1.0"
+const defaultConfigFile = "/etc/posh.json"
+const defaultPort = 443
+
+type Configuration struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Port     int    `json:"port,omitempty"`
+}
 
 var (
-	username      = flag.String("username", "", "posh username")
-	password      = flag.String("password", "", "posh password")
-	port          = flag.Int("port", 443, "Port that posh listens on")
-	silent        = flag.Bool("s", false, "Silent; do not output anything")
-	showTimestamp = flag.Bool("t", false, "Show timestamp; include timestamp in log messages")
-	version       = flag.Bool("version", false, "Print version")
-	addr          string
-	hostname      = "posh"
+	config Configuration
+
+	usernamePtr = flag.String("username", "", "Authentication username")
+	passwordPtr = flag.String("password", "", "Authentication password")
+	portPtr     = flag.Int("port", 0, "Port to listen on")
+
+	configFilePtr    = flag.String("c", defaultConfigFile, "Configuration file")
+	silentPtr        = flag.Bool("s", false, "Silent; do not output anything")
+	showTimestampPtr = flag.Bool("t", false, "Show timestamp; include timestamp in log messages")
+	versionPtr       = flag.Bool("version", false, "Print version")
 
 	stats          map[string]int64 = make(map[string]int64)
 	statsDurations                  = map[string]time.Duration{
@@ -43,26 +54,46 @@ var (
 
 func main() {
 	flag.Parse()
-	if *version {
+	if *versionPtr {
 		fmt.Println(AppVersion)
 		os.Exit(0)
 	}
-	if *silent {
+	if *silentPtr {
 		log.SetOutput(ioutil.Discard)
 	}
-	if !*showTimestamp {
+	if !*showTimestampPtr {
 		log.SetFlags(0)
 	}
+
+	config = Configuration{Port: defaultPort}
+	content, err := ioutil.ReadFile(*configFilePtr)
+	if err != nil {
+		log.Println("Configuration file " + *configFilePtr + " could not be read")
+	} else {
+		err = json.Unmarshal(content, &config)
+		if err != nil {
+			log.Fatal("Invalid configuration file")
+		}
+	}
+	if *usernamePtr != "" {
+		log.Printf("asdf")
+		config.Username = *usernamePtr
+	}
+	if *passwordPtr != "" {
+		config.Password = *passwordPtr
+	}
+	if *portPtr != 0 {
+		config.Port = *portPtr
+	}
 	switch {
-	case len(*username) == 0:
-		log.Fatalf("Missing required --username parameter")
-	case len(*password) == 0:
-		log.Fatalf("Missing required --password parameter")
+	case len(config.Username) == 0:
+		log.Fatal("Username has not been set.")
+	case len(config.Password) == 0:
+		log.Fatal("Password has not been set.")
 	}
 
 	stats["started"] = time.Now().Unix()
-	addr = ":" + strconv.Itoa(*port)
-	hostname, _ = os.Hostname()
+	addr := ":" + strconv.Itoa(config.Port)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stats/", statsHandler)
@@ -96,11 +127,10 @@ func main() {
 		Handler: mux,
 	}
 
-	log.Printf("Starting server %s on %s", hostname, addr)
+	log.Printf("Starting server on %s", addr)
 	log.Println("Listening...")
 	// Empty paths can be passed in as function will use Server.TLSConfig
 	log.Fatal(srv.ListenAndServeTLS("", ""))
-
 }
 
 func generateCert() *tls.Certificate {
@@ -116,6 +146,7 @@ func generateCert() *tls.Certificate {
 		log.Fatalf("failed to generate serial number: %s", err)
 	}
 
+	hostname, _ := os.Hostname()
 	template := x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               pkix.Name{CommonName: hostname},
@@ -140,7 +171,7 @@ func generateCert() *tls.Certificate {
 
 func authenticate(w http.ResponseWriter, req *http.Request) bool {
 	authUsername, authPassword, _ := req.BasicAuth()
-	if authUsername != *username || authPassword != *password {
+	if authUsername != config.Username || authPassword != config.Password {
 		w.Header().Set("WWW-Authenticate", `Basic realm="posh"`)
 		http.Error(w, "Unauthorized: Authorization Required", http.StatusUnauthorized)
 		return false
