@@ -21,15 +21,17 @@ import (
 	"time"
 )
 
+const AppVersion = "1.1.0"
+
 var (
-	version       = "1.0.0"
 	username      = flag.String("username", "", "posh username")
 	password      = flag.String("password", "", "posh password")
 	port          = flag.Int("port", 443, "Port that posh listens on")
-	addr          string
-	hostname      = "posh"
 	silent        = flag.Bool("s", false, "Silent; do not output anything")
 	showTimestamp = flag.Bool("t", false, "Show timestamp; include timestamp in log messages")
+	version       = flag.Bool("version", false, "Print version")
+	addr          string
+	hostname      = "posh"
 
 	stats          map[string]int64 = make(map[string]int64)
 	statsDurations                  = map[string]time.Duration{
@@ -41,6 +43,10 @@ var (
 
 func main() {
 	flag.Parse()
+	if *version {
+		fmt.Println(AppVersion)
+		os.Exit(0)
+	}
 	if *silent {
 		log.SetOutput(ioutil.Discard)
 	}
@@ -161,7 +167,7 @@ func updateStats() {
 func printHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case http.MethodGet:
-		fmt.Fprintf(w, "posh "+version+"\n")
+		fmt.Fprintf(w, "posh "+AppVersion+"\n")
 	case http.MethodPost:
 		if !authenticate(w, req) {
 			return
