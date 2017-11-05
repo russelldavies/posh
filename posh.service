@@ -2,7 +2,9 @@
 Description=Printing Over Simple HTTP service
 
 [Service]
-ExecStart=/opt/posh
+ExecStart=/usr/local/bin/posh
+Restart=on-failure
+User=lp
 
 [Install]
 WantedBy=multi-user.target

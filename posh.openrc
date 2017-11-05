@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+
+description="Printing Over Simple HTTP service"
+
+name=$RC_SVCNAME
+cfgfile="/etc/$RC_SVCNAME.json"
+command="/usr/local/bin/posh"
+command_user="lp"
+pidfile="/run/$RC_SVCNAME.pid"
+command_background="yes"
+
+depend() {
+    need net
+    after bootmisc
+}
+
+start_pre() {
+    if [ ! -e $cfgfile ] ; then
+        eerror "You need a $cfgfile file to run $name"
+        return 1
+    fi
+}
