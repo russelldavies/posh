@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -221,22 +222,21 @@ func check(err error, w http.ResponseWriter, req *http.Request, statusCode int, 
 }
 
 func printJob(w http.ResponseWriter, req *http.Request) {
-	device, err := os.OpenFile(req.URL.Path, os.O_WRONLY, 0660)
+	fd, err := syscall.Open(req.URL.Path, os.O_WRONLY, 0666)
 	if check(err, w, req, http.StatusBadRequest, "Failed to open device at "+req.URL.Path) {
 		return
 	}
-	defer device.Close()
+	defer syscall.Close(fd)
 
 	body, err := ioutil.ReadAll(req.Body)
 	if check(err, w, req, http.StatusInternalServerError, "Failed to read POST body") {
 		return
 	}
 
-	n, err := device.Write(body)
+	n, err := syscall.Write(fd, body)
 	if check(err, w, req, http.StatusInternalServerError, "Failed to write to device") {
 		return
 	}
-	device.Sync()
 	fmt.Fprintf(w, "%d", n)
 	updateStats()
 	log.Printf("%s - %s %d - Wrote %d bytes to %s", req.RemoteAddr, req.Proto,
