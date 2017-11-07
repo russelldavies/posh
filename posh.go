@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	AppVersion        = "1.1.0"
+	AppVersion        = "1.1.1"
 	defaultConfigFile = "/etc/posh.json"
 	defaultPort       = 443
 
