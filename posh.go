@@ -23,14 +23,32 @@ import (
 	"time"
 )
 
-const AppVersion = "1.1.0"
-const defaultConfigFile = "/etc/posh.json"
-const defaultPort = 443
+const (
+	AppVersion        = "1.1.0"
+	defaultConfigFile = "/etc/posh.json"
+	defaultPort       = 443
+
+	Day   = time.Hour * 24
+	Week  = Day * 7
+	Month = Week * 4
+)
 
 type Configuration struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Port     int    `json:"port,omitempty"`
+}
+
+type Stats struct {
+	start      time.Time
+	last       time.Time
+	totalCount int64
+	dayCount   int64
+	dayStart   time.Time
+	weekCount  int64
+	weekStart  time.Time
+	monthCount int64
+	monthStart time.Time
 }
 
 var (
@@ -45,12 +63,7 @@ var (
 	showTimestampPtr = flag.Bool("t", false, "Show timestamp; include timestamp in log messages")
 	versionPtr       = flag.Bool("version", false, "Print version")
 
-	stats          map[string]int64 = make(map[string]int64)
-	statsDurations                  = map[string]time.Duration{
-		"day":   time.Hour * 24,
-		"week":  time.Hour * 24 * 7,
-		"month": time.Hour * 24 * 30,
-	}
+	stats = Stats{start: time.Now()}
 )
 
 func main() {
@@ -93,13 +106,10 @@ func main() {
 		log.Fatal("Password has not been set.")
 	}
 
-	stats["started"] = time.Now().Unix()
 	addr := ":" + strconv.Itoa(config.Port)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stats/", statsHandler)
 	mux.HandleFunc("/", printHandler)
-
 	srv := &http.Server{
 		Addr:         addr,
 		ReadTimeout:  5 * time.Second,
@@ -181,19 +191,20 @@ func authenticate(w http.ResponseWriter, req *http.Request) bool {
 }
 
 func updateStats() {
-	for prefix, duration := range statsDurations {
-		count := prefix + "Count"
-		start := prefix + "Start"
+	stats.totalCount += 1
+	stats.last = time.Now()
 
-		if time.Now().Sub(time.Unix(stats[start], 0)) <= duration {
-			stats[count] += 1
+	set := func(count *int64, start *time.Time, duration time.Duration) {
+		if time.Since(*start) <= duration {
+			*count += 1
 		} else {
-			stats[count] = 1
-			stats[start] = time.Now().Unix()
+			*count = 1
+			*start = time.Now()
 		}
 	}
-	stats["total"] += 1
-	stats["last"] = time.Now().Unix()
+	set(&stats.dayCount, &stats.dayStart, Day)
+	set(&stats.weekCount, &stats.weekStart, Week)
+	set(&stats.monthCount, &stats.monthStart, Month)
 }
 
 func printHandler(w http.ResponseWriter, req *http.Request) {
@@ -247,14 +258,22 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	if !authenticate(w, req) {
 		return
 	}
-	fmt.Fprintf(w, "posh\n~~~~\n")
-	fmt.Fprintf(w, "Started: %s\n", time.Unix(stats["started"], 0))
-	if stats["total"] > 0 {
-		fmt.Fprintf(w, "Last print job: %s\n", time.Unix(stats["last"], 0))
+	displayCount := func(count *int64, start *time.Time, duration time.Duration) int64 {
+		if time.Since(*start) <= duration {
+			return *count
+		} else {
+			return 0
+		}
+	}
+
+	fmt.Fprintf(w, "posh %s\n~~~~~~~~~~\n", AppVersion)
+	fmt.Fprintf(w, "Start time: %s\n", stats.start.Format(time.RFC3339))
+	if stats.totalCount > 0 {
+		fmt.Fprintf(w, "Last print job: %s\n", stats.last.Format(time.RFC3339))
 	}
 	fmt.Fprintf(w, "Submitted print jobs, in the last:\n")
-	fmt.Fprintf(w, " * Day: %d\n", stats["dayCount"])
-	fmt.Fprintf(w, " * Week: %d\n", stats["weekCount"])
-	fmt.Fprintf(w, " * Month: %d\n", stats["monthCount"])
-	fmt.Fprintf(w, " * Total (since started): %d\n", stats["total"])
+	fmt.Fprintf(w, " * Day: %d\n", displayCount(&stats.dayCount, &stats.dayStart, Day))
+	fmt.Fprintf(w, " * Week: %d\n", displayCount(&stats.weekCount, &stats.weekStart, Week))
+	fmt.Fprintf(w, " * Month: %d\n", displayCount(&stats.monthCount, &stats.monthStart, Month))
+	fmt.Fprintf(w, " * Total (since started): %d\n", stats.totalCount)
 }
